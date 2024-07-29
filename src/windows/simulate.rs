@@ -5,6 +5,8 @@ use std::mem::size_of;
 use winapi::ctypes::{c_int, c_short};
 use winapi::shared::minwindef::{DWORD, UINT, WORD};
 use winapi::shared::ntdef::LONG;
+use winapi::shared::windef::POINT;
+use winapi::um::winuser::GetCursorPos;
 use winapi::um::winuser::{
     GetSystemMetrics, INPUT_u, SendInput, INPUT, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT,
     KEYEVENTF_KEYUP, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_HWHEEL, MOUSEEVENTF_LEFTDOWN,
@@ -13,6 +15,7 @@ use winapi::um::winuser::{
     MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP, MOUSEINPUT, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
     WHEEL_DELTA,
 };
+
 /// Not defined in win32 but define here for clarity
 static KEYEVENTF_KEYDOWN: DWORD = 0;
 
@@ -83,18 +86,26 @@ pub fn simulate(event_type: &EventType) -> Result<(), SimulateError> {
             let code = code_from_key(*key).ok_or(SimulateError)?;
             sim_keyboard_event(KEYEVENTF_KEYUP, code, 0)
         }
-        EventType::ButtonPress(button) => match button {
-            Button::Left => sim_mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0),
-            Button::Middle => sim_mouse_event(MOUSEEVENTF_MIDDLEDOWN, 0, 0, 0),
-            Button::Right => sim_mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0),
-            Button::Unknown(code) => sim_mouse_event(MOUSEEVENTF_XDOWN, (*code).into(), 0, 0),
-        },
-        EventType::ButtonRelease(button) => match button {
-            Button::Left => sim_mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0),
-            Button::Middle => sim_mouse_event(MOUSEEVENTF_MIDDLEUP, 0, 0, 0),
-            Button::Right => sim_mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0),
-            Button::Unknown(code) => sim_mouse_event(MOUSEEVENTF_XUP, (*code).into(), 0, 0),
-        },
+        EventType::ButtonPress { button, x, y } => {
+            let dx = *x as i32;
+            let dy = *y as i32;
+            match button {
+                Button::Left => sim_mouse_event(MOUSEEVENTF_LEFTDOWN, 0, dx, dy),
+                Button::Middle => sim_mouse_event(MOUSEEVENTF_MIDDLEDOWN, 0, dx, dy),
+                Button::Right => sim_mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, dx, dy),
+                Button::Unknown(code) => sim_mouse_event(MOUSEEVENTF_XDOWN, (*code).into(), dx, dy),
+            }
+        }
+        EventType::ButtonRelease { button, x, y } => {
+            let dx = *x as i32;
+            let dy = *y as i32;
+            match button {
+                Button::Left => sim_mouse_event(MOUSEEVENTF_LEFTUP, 0, dx, dy),
+                Button::Middle => sim_mouse_event(MOUSEEVENTF_MIDDLEUP, 0, dx, dy),
+                Button::Right => sim_mouse_event(MOUSEEVENTF_RIGHTUP, 0, dx, dy),
+                Button::Unknown(code) => sim_mouse_event(MOUSEEVENTF_XUP, (*code).into(), dx, dy),
+            }
+        }
         EventType::Wheel { delta_x, delta_y } => {
             if *delta_x != 0 {
                 sim_mouse_event(
@@ -128,6 +139,31 @@ pub fn simulate(event_type: &EventType) -> Result<(), SimulateError> {
                 (*x as i32 + 1) * 65535 / width,
                 (*y as i32 + 1) * 65535 / height,
             )
+        }
+        EventType::Drag { button: _, x, y } => {
+            //if someone copy events from macos to windows, in order to ensure the operation, run drag event as mousemove
+            let event_type = EventType::MouseMove { x: *x, y: *y };
+            simulate(&event_type)
+        }
+    }
+}
+
+type CGFloat = f64;
+pub struct CGPoint {
+    pub x: CGFloat,
+    pub y: CGFloat,
+}
+
+pub unsafe fn get_current_mouse_location() -> Option<CGPoint> {
+    let mut point = POINT { x: 0, y: 0 };
+    unsafe {
+        if GetCursorPos(&mut point as *mut POINT) == 0 {
+            return None;
+        } else {
+            return Some(CGPoint {
+                x: point.x as f64,
+                y: point.y as f64,
+            });
         }
     }
 }

@@ -3,6 +3,7 @@ use crate::macos::keyboard::Keyboard;
 use crate::rdev::{Button, Event, EventType};
 use cocoa::base::id;
 use core_graphics::event::{CGEvent, CGEventFlags, CGEventTapLocation, CGEventType, EventField};
+use core_graphics::geometry::CGPoint;
 use lazy_static::lazy_static;
 use std::convert::TryInto;
 use std::os::raw::c_void;
@@ -75,7 +76,7 @@ extern "C" {
     pub fn CFRunLoopGetCurrent() -> CFRunLoopRef;
     pub fn CGEventTapEnable(tap: CFMachPortRef, enable: bool);
     pub fn CFRunLoopRun();
-
+    pub fn CFRunLoopStop(rl: CFRunLoopRef);
     pub static kCFRunLoopCommonModes: CFRunLoopMode;
 
 }
@@ -96,18 +97,29 @@ pub unsafe fn convert(
     cg_event: &CGEvent,
     keyboard_state: &mut Keyboard,
 ) -> Option<Event> {
+    let CGPoint { x, y } = cg_event.location();
     let option_type = match _type {
-        CGEventType::LeftMouseDown => Some(EventType::ButtonPress(Button::Left)),
-        CGEventType::LeftMouseUp => Some(EventType::ButtonRelease(Button::Left)),
-        CGEventType::RightMouseDown => Some(EventType::ButtonPress(Button::Right)),
-        CGEventType::RightMouseUp => Some(EventType::ButtonRelease(Button::Right)),
-        CGEventType::MouseMoved => {
-            let point = cg_event.location();
-            Some(EventType::MouseMove {
-                x: point.x,
-                y: point.y,
-            })
-        }
+        CGEventType::LeftMouseDown => Some(EventType::ButtonPress {
+            button: Button::Left,
+            x,
+            y,
+        }),
+        CGEventType::LeftMouseUp => Some(EventType::ButtonRelease {
+            button: Button::Left,
+            x,
+            y,
+        }),
+        CGEventType::RightMouseDown => Some(EventType::ButtonPress {
+            button: Button::Right,
+            x,
+            y,
+        }),
+        CGEventType::RightMouseUp => Some(EventType::ButtonRelease {
+            button: Button::Right,
+            x,
+            y,
+        }),
+        CGEventType::MouseMoved => Some(EventType::MouseMove { x, y }),
         CGEventType::KeyDown => {
             let code = cg_event.get_integer_value_field(EventField::KEYBOARD_EVENT_KEYCODE);
             Some(EventType::KeyPress(key_from_code(code.try_into().ok()?)))
@@ -135,6 +147,16 @@ pub unsafe fn convert(
                 cg_event.get_integer_value_field(EventField::SCROLL_WHEEL_EVENT_POINT_DELTA_AXIS_2);
             Some(EventType::Wheel { delta_x, delta_y })
         }
+        CGEventType::LeftMouseDragged => Some(EventType::Drag {
+            button: Button::Left,
+            x,
+            y,
+        }),
+        CGEventType::RightMouseDragged => Some(EventType::Drag {
+            button: Button::Right,
+            x,
+            y,
+        }),
         _ => None,
     };
     if let Some(event_type) = option_type {

@@ -21,8 +21,8 @@ unsafe fn convert_native_with_source(
             let code = code_from_key(*key)?;
             CGEvent::new_keyboard_event(source, code, false).ok()
         }
-        EventType::ButtonPress(button) => {
-            let point = get_current_mouse_location()?;
+        EventType::ButtonPress { button, x, y } => {
+            let point = CGPoint { x: *x, y: *y };
             let event = match button {
                 Button::Left => CGEventType::LeftMouseDown,
                 Button::Right => CGEventType::RightMouseDown,
@@ -36,8 +36,8 @@ unsafe fn convert_native_with_source(
             )
             .ok()
         }
-        EventType::ButtonRelease(button) => {
-            let point = get_current_mouse_location()?;
+        EventType::ButtonRelease { button, x, y } => {
+            let point = CGPoint { x: *x, y: *y };
             let event = match button {
                 Button::Left => CGEventType::LeftMouseUp,
                 Button::Right => CGEventType::RightMouseUp,
@@ -52,7 +52,7 @@ unsafe fn convert_native_with_source(
             .ok()
         }
         EventType::MouseMove { x, y } => {
-            let point = CGPoint { x: (*x), y: (*y) };
+            let point = CGPoint { x: *x, y: *y };
             CGEvent::new_mouse_event(source, CGEventType::MouseMoved, point, CGMouseButton::Left)
                 .ok()
         }
@@ -68,6 +68,27 @@ unsafe fn convert_native_with_source(
             )
             .ok()
         }
+        EventType::Drag { button, x, y } => {
+            let point = CGPoint { x: *x, y: *y };
+            match button {
+                Button::Left => {
+                    let mouse_type = CGEventType::LeftMouseDragged;
+                    CGEvent::new_mouse_event(source, mouse_type, point, CGMouseButton::Left).ok()
+                }
+                Button::Right => {
+                    let mouse_type = CGEventType::RightMouseDragged;
+                    CGEvent::new_mouse_event(source, mouse_type, point, CGMouseButton::Right).ok()
+                }
+                Button::Middle => {
+                    let mouse_type = CGEventType::OtherMouseDragged;
+                    CGEvent::new_mouse_event(source, mouse_type, point, CGMouseButton::Center).ok()
+                }
+                Button::Unknown(_) => {
+                    let mouse_type = CGEventType::OtherMouseDragged;
+                    CGEvent::new_mouse_event(source, mouse_type, point, CGMouseButton::Center).ok()
+                }
+            }
+        }
     }
 }
 
@@ -76,7 +97,10 @@ unsafe fn convert_native(event_type: &EventType) -> Option<CGEvent> {
     convert_native_with_source(event_type, source)
 }
 
-unsafe fn get_current_mouse_location() -> Option<CGPoint> {
+///cause all of button events contain coordinate which can be used when they be simulated.
+///so you don't need this fn when button press/release anymore.
+#[allow(dead_code)]
+pub unsafe fn get_current_mouse_location() -> Option<CGPoint> {
     let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState).ok()?;
     let event = CGEvent::new(source).ok()?;
     Some(event.location())

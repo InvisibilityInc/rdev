@@ -22,7 +22,7 @@ unsafe extern "C" fn raw_callback(
     let opt = KEYBOARD_STATE.lock();
     if let Ok(mut keyboard) = opt {
         if let Some(event) = convert(_type, &cg_event, &mut keyboard) {
-            if let Some(callback) = &mut GLOBAL_CALLBACK {
+            if let Some(ref mut callback) = GLOBAL_CALLBACK {
                 callback(event);
             }
         }
@@ -59,7 +59,22 @@ where
         CFRunLoopAddSource(current_loop, _loop, kCFRunLoopCommonModes);
 
         CGEventTapEnable(tap, true);
+        STOP_LOOP = Some(Box::new(move || {
+            CFRunLoopStop(current_loop);
+        }));
         CFRunLoopRun();
     }
     Ok(())
 }
+
+pub fn stop_listen() {
+    unsafe {
+        if let Some(stop_loop) = STOP_LOOP.as_ref() {
+            stop_loop();
+            STOP_LOOP = None;
+        }
+    }
+}
+
+type DynFn = dyn Fn() + 'static;
+pub static mut STOP_LOOP: Option<Box<DynFn>> = None;

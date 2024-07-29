@@ -228,7 +228,10 @@ mod macos;
 #[cfg(target_os = "macos")]
 pub use crate::macos::Keyboard;
 #[cfg(target_os = "macos")]
-use crate::macos::{display_size as _display_size, listen as _listen, simulate as _simulate};
+use crate::macos::{
+    display_size as _display_size, get_current_mouse_location as _get_current_mouse_location,
+    listen as _listen, simulate as _simulate, stop_listen as _stop_listen,
+};
 
 #[cfg(target_os = "linux")]
 mod linux;
@@ -242,7 +245,10 @@ mod windows;
 #[cfg(target_os = "windows")]
 pub use crate::windows::Keyboard;
 #[cfg(target_os = "windows")]
-use crate::windows::{display_size as _display_size, listen as _listen, simulate as _simulate};
+use crate::windows::{
+    display_size as _display_size, get_current_mouse_location as _get_current_mouse_location,
+    listen as _listen, simulate as _simulate, stop_listen as _stop_listen,
+};
 
 /// Listening to global events. Caveat: On MacOS, you require the listen
 /// loop needs to be the primary app (no fork before) and need to have accessibility
@@ -270,6 +276,29 @@ where
     T: FnMut(Event) + 'static,
 {
     _listen(callback)
+}
+
+pub fn stop_listen() {
+    _stop_listen();
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Point {
+    pub x: f64,
+    pub y: f64,
+}
+
+pub fn get_current_mouse_location() -> Option<Point> {
+    unsafe {
+        if let Some(point) = _get_current_mouse_location() {
+            Some(Point {
+                x: point.x as f64,
+                y: point.y as f64,
+            })
+        } else {
+            None
+        }
+    }
 }
 
 /// Sending some events
